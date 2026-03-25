@@ -146,3 +146,25 @@ class TestTimeoutEnforcement:
         # Verify the engine has timeout configured
         assert engine.timeout == 5
         assert resp is not None
+
+
+class TestPathPreservation:
+    """Tests that request paths are not normalized."""
+
+    @responses.activate
+    def test_path_traversal_not_normalized(self):
+        """Test path traversal sequences are preserved."""
+        responses.add(responses.GET, 'https://example.com/../../etc/passwd', status=200)
+        engine = waftoolsengine(target='https://example.com')
+        engine.Request(path='../../etc/passwd')
+        assert '../../etc/passwd' in responses.calls[0].request.url
+
+    @responses.activate
+    def test_path_traversal_with_params(self):
+        """Test path traversal is preserved when query params are present."""
+        responses.add(responses.GET, 'https://example.com/../../etc/passwd', status=200)
+        engine = waftoolsengine(target='https://example.com')
+        engine.Request(path='../../etc/passwd', params={'key': 'val'})
+        url = responses.calls[0].request.url
+        assert '../../etc/passwd' in url
+        assert 'key=val' in url
