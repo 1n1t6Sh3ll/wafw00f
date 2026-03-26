@@ -7,6 +7,7 @@ See the LICENSE file for copying permission.
 import time
 import logging
 from copy import copy
+from urllib.parse import urlparse
 
 import requests
 import urllib3
@@ -57,8 +58,28 @@ class waftoolsengine:
             if not headers:
                 h = self.headers
             else: h = headers
-            req = requests.get(self.target, proxies=self.proxies, headers=h, timeout=self.timeout,
-                    allow_redirects=self.allowredir, params=params, verify=False, stream=True)
+
+            # Create the url manually to avoid path normalization
+            url = self.target if path is None else self.target.rstrip('/') + '/' + path.lstrip('/')
+            prepared = requests.Request('GET', url, headers=h,
+                                        params=params or {}).prepare()
+
+            parsed_url = urlparse(prepared.url)
+
+            # Ensuring trailing slash does not disappear
+            trailing_slash = parsed_url.path.endswith('/')
+            if trailing_slash and not url.endswith('/'):
+                url += '/'
+
+            # Preserve the original path (e.g. ../../etc/passwd)
+            if params:
+                prepared.url = url + '?' + parsed_url.query
+            else:
+                prepared.url = url
+
+            req = requests.Session().send(prepared, proxies=self.proxies, timeout=self.timeout,
+                    allow_redirects=self.allowredir, verify=False, stream=True)
+
             # Read only up to MAX_RESPONSE_SIZE to avoid hanging on streaming responses
             # (e.g., audio streams) - see issue #246
             # Also enforce timeout during reading to handle slow streaming servers
